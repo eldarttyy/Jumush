@@ -1,6 +1,6 @@
 // App-shell cache: the UI loads offline / on flaky mobile data; API calls always go to the network.
-const CACHE = 'usta-v2';
-const SHELL = ['/', '/index.html', '/app.js', '/styles.css', '/icon.svg', '/manifest.webmanifest'];
+const CACHE = 'usta-v3';
+const SHELL = ['/', '/index.html', '/config.js', '/app.js', '/styles.css', '/icon.svg', '/manifest.webmanifest'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {

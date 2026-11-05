@@ -1,5 +1,24 @@
 'use strict';
 // ---------- utils ----------
+// When bundled in the Android/iOS app (Capacitor), the UI is served from the device and talks to the API at apiBase.
+const API_BASE = (window.USTA_CONFIG && window.USTA_CONFIG.apiBase || '').replace(/\/$/, '');
+const CAP = window.Capacitor;
+const NATIVE = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
+const plugin = name => NATIVE && CAP.registerPlugin ? CAP.registerPlugin(name) : null;
+// Server returns site-relative URLs (/media/…, /pay/…); make them absolute for the native app.
+const absolutize = v => {
+  if (!API_BASE || v == null) return v;
+  if (typeof v === 'string') return /^\/(media|pay|api)\//.test(v) ? API_BASE + v : v;
+  if (Array.isArray(v)) return v.map(absolutize);
+  if (typeof v === 'object') { for (const k in v) v[k] = absolutize(v[k]); }
+  return v;
+};
+// Payment checkout: in-app browser on phones (returns to the app when closed), normal navigation on the web.
+async function openPay(url) {
+  const Browser = plugin('Browser');
+  if (Browser) { await Browser.open({ url: absolutize(url) }); return; }
+  location.href = url;
+}
 const TZ = 'Asia/Bishkek'; // all times shown in Bishkek time regardless of device setting
 const $ = s => document.querySelector(s);
 const app = $('#app');
@@ -20,8 +39,8 @@ const role = () => state.me?.user.role;
 
 function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 2600); }
 async function api(path, opts = {}) {
-  const r = await fetch('/api' + path, { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json', ...(state.token ? { Authorization: 'Bearer ' + state.token } : {}) }, body: opts.body ? JSON.stringify(opts.body) : undefined });
-  const d = await r.json().catch(() => ({}));
+  const r = await fetch(API_BASE + '/api' + path, { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json', ...(state.token ? { Authorization: 'Bearer ' + state.token } : {}) }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const d = absolutize(await r.json().catch(() => ({})));
   if (r.status === 401 && state.token) { clearSession(); }
   if (!r.ok) throw new Error(d.error || 'Something went wrong');
   return d;
@@ -50,7 +69,7 @@ async function upload(kind, multiple = false, capture = false) {
   return out;
 }
 async function privateImg(el, id) {
-  const r = await fetch('/api/photos/' + id, { headers: { Authorization: 'Bearer ' + state.token } });
+  const r = await fetch(API_BASE + '/api/photos/' + id, { headers: { Authorization: 'Bearer ' + state.token } });
   if (r.ok) el.style.backgroundImage = `url(${URL.createObjectURL(await r.blob())})`;
 }
 
@@ -200,7 +219,7 @@ const views = {
       $('#submit').disabled = true;
       try {
         const b = await api('/bookings', { method: 'POST', body: { service_id: svc.id, qty: qty(), pro_id: st.pro || null, scheduled_at: at, district: f.district.value, address: f.address.value, notes: f.notes.value, recurrence: st.recurrence, photo_ids: st.photos.map(p => p.id) } });
-        location.href = b.pay_url;
+        openPay(b.pay_url);
       } catch (err) { toast(err.message); $('#submit').disabled = false; if (st.pro) renderWhen(); }
     };
   },
@@ -293,7 +312,7 @@ const views = {
     let tip = 0, rating = 5;
     app.querySelectorAll('[data-a]').forEach(btn => btn.onclick = async () => {
       const a = btn.dataset.a; let payload = {};
-      if (a === 'pay') { const r = await api(`/bookings/${id}/pay`, { method: 'POST' }).catch(e => toast(e.message)); if (r) location.href = r.pay_url; return; }
+      if (a === 'pay') { const r = await api(`/bookings/${id}/pay`, { method: 'POST' }).catch(e => toast(e.message)); if (r) openPay(r.pay_url); return; }
       if (a === 'confirm' && isCust) { $('#tipbox').hidden = false; $('#acts').hidden = true; return; }
       if (a === 'dispute') { const reason = prompt('What went wrong? Our team will review it within 24 hours.'); if (!reason) return; payload = { reason }; }
       if (a === 'cancel') { const late = b.status === 'accepted' && Date.parse(b.scheduled_at) - Date.now() < 24 * 3600e3; if (!confirm(late ? `It's less than 24 h before the visit, so a ${som(Math.round(b.price * 0.2))} late-cancellation fee goes to the pro. Cancel anyway?` : 'Cancel this booking? You will get a full refund.')) return; }
@@ -302,7 +321,7 @@ const views = {
       try { await api(`/bookings/${id}/${a}`, { method: 'POST', body: payload }); toast('Done'); a === 'release' || a === 'decline' ? go('#/jobs') : route(); } catch (e) { toast(e.message); btn.disabled = false; }
     });
     app.querySelectorAll('[data-tip]').forEach(c => c.onclick = () => { app.querySelectorAll('[data-tip]').forEach(x => x.classList.remove('on')); c.classList.add('on'); tip = +c.dataset.tip; $('#payNow').textContent = `Release ${som(b.price + tip)}`; });
-    $('#payNow')?.addEventListener('click', async () => { try { const r = await api(`/bookings/${id}/confirm`, { method: 'POST', body: { tip } }); if (r.tip_pay_url) return (location.href = r.tip_pay_url); toast('Payment released. Thank you!'); route(); } catch (e) { toast(e.message); } });
+    $('#payNow')?.addEventListener('click', async () => { try { const r = await api(`/bookings/${id}/confirm`, { method: 'POST', body: { tip } }); if (r.tip_pay_url) { route(); return openPay(r.tip_pay_url); } toast('Payment released. Thank you!'); route(); } catch (e) { toast(e.message); } });
     app.querySelectorAll('#rt [data-r]').forEach(c => c.onclick = () => { app.querySelectorAll('#rt .chip').forEach(x => x.classList.remove('on')); c.classList.add('on'); rating = +c.dataset.r; });
     $('#rv')?.addEventListener('click', async () => { try { await api(`/bookings/${id}/review`, { method: 'POST', body: { rating, body: $('#rb').value } }); toast('Thanks for the review!'); route(); } catch (e) { toast(e.message); } });
     if (showChat) {
@@ -385,7 +404,7 @@ const views = {
       ${r.status === 'open' ? '<div class="actions"><button class="ghost" id="close">Close request</button></div>' : ''}`;
     app.querySelectorAll('[data-hire]').forEach(b => b.onclick = async () => {
       if (!confirm('Hire this pro? We hold the payment and release it only after you confirm the job is done.')) return;
-      try { const bk = await api(`/requests/${id}/hire`, { method: 'POST', body: { quote_id: +b.dataset.hire } }); location.href = bk.pay_url; } catch (e) { toast(e.message); }
+      try { const bk = await api(`/requests/${id}/hire`, { method: 'POST', body: { quote_id: +b.dataset.hire } }); openPay(bk.pay_url); } catch (e) { toast(e.message); }
     });
     $('#close')?.addEventListener('click', async () => { if (confirm('Close this request? Pros will no longer be able to quote.')) { await api(`/requests/${id}/close`, { method: 'POST' }); route(); } });
   },
@@ -549,5 +568,11 @@ window.addEventListener('hashchange', route);
 (async () => {
   await loadMe(); route();
   setInterval(async () => { if (!state.token) return; const prev = state.me?.unread; await loadMe(); if (state.me && state.me.unread > (prev || 0)) toast('🔔 New notification'); }, 20000);
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  if (!NATIVE && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  if (NATIVE) {
+    const App = plugin('App'), Browser = plugin('Browser');
+    App?.addListener('backButton', ({ canGoBack }) => { if (canGoBack && location.hash && location.hash !== '#/') history.back(); else App.exitApp(); });
+    App?.addListener('resume', () => { loadMe(); route.keepScroll = true; route().finally(() => route.keepScroll = false); });
+    Browser?.addListener('browserFinished', () => { loadMe(); route(); }); // back from checkout: refresh payment status
+  }
 })();

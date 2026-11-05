@@ -16,6 +16,8 @@ const PORT = Number(env.PORT || 3000);
 const DB_FILE = env.DB_FILE || path.join(__dirname, 'usta.db');
 const UPLOAD_DIR = env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 const BASE_URL = (env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+// Origins allowed to call the API cross-origin: the Capacitor apps (iOS: capacitor://localhost, Android: https://localhost) + extras.
+const CORS_ORIGINS = new Set(['capacitor://localhost', 'https://localhost', 'http://localhost', ...String(env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)]);
 const OTP_SECRET = env.OTP_SECRET || crypto.randomBytes(32).toString('hex');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -854,6 +856,13 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   if (url.pathname.startsWith('/api/')) {
+    const origin = req.headers.origin;
+    if (origin && CORS_ORIGINS.has(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin); res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Lang');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS'); res.setHeader('Access-Control-Max-Age', '86400');
+    }
+    if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
     for (const r of routes) {
       const m = r.method === req.method && url.pathname.match(r.re);
       if (m) {
@@ -890,4 +899,4 @@ if (require.main === module) {
   setInterval(expireUnpaid, 60e3).unref();
   server.listen(PORT, () => console.log(`Usta running on ${BASE_URL} (payments: ${payments.name}, sms: ${sms.name})`));
 }
-module.exports = { server, db, maskContacts, normPhone, CFG, expireUnpaid, applyPaymentResult };
+module.exports = { CORS_ORIGINS, server, db, maskContacts, normPhone, CFG, expireUnpaid, applyPaymentResult };

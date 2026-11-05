@@ -1,0 +1,11 @@
+{
+  "appId": "kg.usta.app",
+  "appName": "Usta",
+  "webDir": "www",
+  "android": { "allowMixedContent": false },
+  "ios": { "contentInset": "never" },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 800, "backgroundColor": "#0f766e", "showSpinner": false },
+    "StatusBar": { "style": "LIGHT", "backgroundColor": "#0f766e", "overlaysWebView": false }
+  }
+}

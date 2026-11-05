@@ -1,0 +1,7 @@
+.git
+mobile
+node_modules
+*.db*
+uploads
+*.bundle
+.github

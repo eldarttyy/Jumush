@@ -244,3 +244,13 @@ test('verification gate + notifications in the user\'s language', async () => {
   assert.equal((await call('/admin/stats', { token: p })).status, 403);
   assert.equal((await call('/admin/stats', { token: admin })).data.payment_provider, 'mock');
 });
+
+test('CORS: mobile app origins allowed, others not', async () => {
+  const pre = await fetch(base + '/catalog', { method: 'OPTIONS', headers: { Origin: 'capacitor://localhost', 'Access-Control-Request-Method': 'GET' } });
+  assert.equal(pre.status, 204); assert.equal(pre.headers.get('access-control-allow-origin'), 'capacitor://localhost');
+  assert.match(pre.headers.get('access-control-allow-headers'), /Authorization/);
+  const android = await fetch(base + '/catalog', { headers: { Origin: 'https://localhost' } });
+  assert.equal(android.headers.get('access-control-allow-origin'), 'https://localhost');
+  const evil = await fetch(base + '/catalog', { headers: { Origin: 'https://evil.example' } });
+  assert.equal(evil.headers.get('access-control-allow-origin'), null);
+});

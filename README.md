@@ -37,3 +37,39 @@ Webhook handling is idempotent; payments that arrive after a booking expired are
 
 Russian (default) and English. Server messages and notifications: `lib/i18n.js`; UI: `public/i18n.js`.
 Notifications are stored in the recipient's language.
+
+## Deploying the web app
+
+- **Docker:** `docker build -t usta . && docker run -p 3000:3000 -v usta-data:/data --env-file .env usta`
+- **Render:** New → Blueprint → this repo (`render.yaml`). Fill in `BASE_URL` and the Twilio keys.
+
+⚠️ `ALLOW_DEMO_PROVIDERS=1` with `PAYMENT_PROVIDER=mock` means anyone can mark a payment as paid. That's fine for a demo, never with real customers.
+
+## Android & iOS apps (`mobile/`)
+
+Capacitor 8 wraps the same `public/` UI into native apps (`kg.usta.app`). The UI ships inside the app and calls your server at `USTA_API_URL`.
+
+**Build in the cloud (no Mac needed):** GitHub → Actions → "Mobile apps" runs on every push to `main`:
+- `usta-android-debug-apk`: install directly on an Android phone
+- `usta-ios-simulator`: runs in the iOS Simulator
+- with signing secrets: `usta-android-release` (`.aab` for Google Play) and `usta-ios-ipa` (for TestFlight / App Store)
+
+Set repository **variable** `USTA_API_URL` (e.g. `https://usta.onrender.com`). Signing **secrets**:
+
+| Platform | Secrets |
+|---|---|
+| Android | `ANDROID_KEYSTORE_BASE64` (`base64 -w0 release.jks`), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` |
+| iOS | `IOS_CERT_P12_BASE64` (Apple Distribution cert), `IOS_CERT_PASSWORD`, `IOS_PROVISION_PROFILE_BASE64` (App Store profile for `kg.usta.app`), `IOS_TEAM_ID` |
+
+Create an Android keystore once: `keytool -genkey -v -keystore release.jks -alias usta -keyalg RSA -keysize 2048 -validity 10000`. **Back it up**: losing it means you can never update the Play Store app.
+
+**Build locally:**
+
+    cd mobile && npm install
+    USTA_API_URL=https://your-server npm run android   # opens Android Studio
+    USTA_API_URL=https://your-server npm run ios       # opens Xcode (macOS only)
+
+The server allows the app origins (`capacitor://localhost`, `https://localhost`) through CORS. Add more with `CORS_ORIGINS`.
+Payments open in an in-app browser (`@capacitor/browser`); closing it refreshes the booking.
+
+Not yet: push notifications (need a Firebase project + APNs key), deep links back from the payment page.

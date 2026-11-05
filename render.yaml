@@ -1,0 +1,19 @@
+# One-click deploy on Render: Dashboard → New → Blueprint → pick this repo.
+# The disk keeps the SQLite database and uploaded photos across deploys (requires a paid instance).
+services:
+  - type: web
+    name: usta
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/catalog
+    disk: { name: data, mountPath: /data, sizeGB: 1 }
+    envVars:
+      - { key: OTP_SECRET, generateValue: true }
+      - { key: TRUST_PROXY, value: "1" }
+      - { key: BASE_URL, sync: false }          # e.g. https://usta.onrender.com
+      - { key: SMS_PROVIDER, value: twilio }    # or nikita
+      - { key: TWILIO_ACCOUNT_SID, sync: false }
+      - { key: TWILIO_AUTH_TOKEN, sync: false }
+      - { key: TWILIO_FROM, sync: false }
+      - { key: PAYMENT_PROVIDER, value: mock }  # switch to odengi / mbank once the adapter is implemented
+      - { key: ALLOW_DEMO_PROVIDERS, value: "1" } # remove when real payments are live
