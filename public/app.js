@@ -1,12 +1,13 @@
 'use strict';
 // ---------- utils ----------
+const TZ = 'Asia/Bishkek'; // all times shown in Bishkek time regardless of device setting
 const $ = s => document.querySelector(s);
 const app = $('#app');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const som = n => Number(n || 0).toLocaleString('ru-RU') + ' сом';
 const stars = (r, n) => r ? `<span class="stars">★</span> <b>${r}</b>${n != null ? ` <span class="muted">(${n})</span>` : ''}` : '<span class="badge brand">New</span>';
-const when = s => new Date(s).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const dateOnly = s => new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const when = s => new Date(s).toLocaleString('en-GB', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const dateOnly = s => new Date(s).toLocaleDateString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', year: 'numeric' });
 const ago = s => { const m = (Date.now() - Date.parse(s.includes('T') ? s : s.replace(' ', 'T') + 'Z')) / 6e4; return m < 1 ? 'just now' : m < 60 ? `${m | 0} min ago` : m < 1440 ? `${(m / 60) | 0} h ago` : `${(m / 1440) | 0} d ago`; };
 const localISO = d => new Date(d - d.getTimezoneOffset() * 6e4).toISOString();
 const initials = n => String(n || '?').split(/\s+/).map(x => x[0]).join('').slice(0, 2).toUpperCase();
@@ -407,7 +408,7 @@ const views = {
         <div class="actions"><button data-acc="${j.id}" class="sm">Accept</button>${j.status === 'assigned' ? `<button data-dec="${j.id}" class="ghost sm">Decline</button>` : ''}<span class="muted small" style="align-self:center">🔒 Payment already held</span></div></div>`;
     app.innerHTML = `<h1>Hi, ${esc(user.name.split(' ')[0])} 👋</h1>
       <div class="stat"><div><span class="muted small">Balance</span><b>${som(pro.balance)}</b></div><div><span class="muted small">Rating</span><b>${stats.rating ? '★ ' + stats.rating : '—'}</b><span class="muted small">${stats.jobs} jobs</span></div></div>
-      ${todays.length ? `<h2>Today</h2>${todays.map(b => `<a class="card row" href="#/b/${b.id}"><div><b>${new Date(b.scheduled_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} · ${esc(b.title)}</b><div class="muted small">${esc(b.address)}</div></div>${badge(b.status)}</a>`).join('')}` : ''}
+      ${todays.length ? `<h2>Today</h2>${todays.map(b => `<a class="card row" href="#/b/${b.id}"><div><b>${new Date(b.scheduled_at).toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' })} · ${esc(b.title)}</b><div class="muted small">${esc(b.address)}</div></div>${badge(b.status)}</a>`).join('')}` : ''}
       ${direct.length ? `<h2>Requested you (${direct.length})</h2>${direct.map(jobCard).join('')}` : ''}
       <h2>Open jobs near you (${open.length})</h2>
       ${open.map(jobCard).join('') || empty('🧰', "No open jobs right now. We'll notify you as soon as one comes in. Tip: check your quote leads too.", '<a class="btn ghost" href="#/leads">See leads</a>')}`;

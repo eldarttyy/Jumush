@@ -87,3 +87,5 @@ textarea{min-height:90px;resize:vertical}
 .hours-row label{margin:0;display:flex;gap:6px;align-items:center;font-weight:500}.hours-row input[type=checkbox]{width:auto;min-height:0}
 .bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--brand)}
 .tip-opts{display:flex;gap:8px;flex-wrap:wrap}
+[hidden]{display:none!important}
+a.card.row{display:flex}
