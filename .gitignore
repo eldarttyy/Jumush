@@ -1,1 +1,4 @@
 *.db*
+uploads/
+*.bundle
+node_modules/
