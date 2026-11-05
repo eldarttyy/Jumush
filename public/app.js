@@ -55,13 +55,13 @@ async function privateImg(el, id) {
 }
 
 const STATUS = {
-  open: ['Finding a pro', 'warn'], assigned: ['Waiting for pro', 'warn'], accepted: ['Confirmed', 'ok'],
+  unpaid: ['Awaiting payment', 'warn'], open: ['Finding a pro', 'warn'], assigned: ['Waiting for pro', 'warn'], accepted: ['Confirmed', 'ok'],
   in_progress: ['In progress', 'brand'], awaiting_confirmation: ['Confirm work', 'warn'], completed: ['Completed', 'ok'],
   disputed: ['Problem reported', 'bad'], cancelled: ['Cancelled', ''], refunded: ['Refunded', ''],
 };
 const FLOW = ['open', 'accepted', 'in_progress', 'awaiting_confirmation', 'completed'];
 const badge = s => `<span class="badge ${STATUS[s]?.[1] || ''}">${STATUS[s]?.[0] || esc(s)}</span>`;
-const UPCOMING = ['open', 'assigned', 'accepted', 'in_progress', 'awaiting_confirmation', 'disputed'];
+const UPCOMING = ['unpaid', 'open', 'assigned', 'accepted', 'in_progress', 'awaiting_confirmation', 'disputed'];
 
 // ---------- chrome ----------
 const TABS = {
@@ -200,7 +200,7 @@ const views = {
       $('#submit').disabled = true;
       try {
         const b = await api('/bookings', { method: 'POST', body: { service_id: svc.id, qty: qty(), pro_id: st.pro || null, scheduled_at: at, district: f.district.value, address: f.address.value, notes: f.notes.value, recurrence: st.recurrence, photo_ids: st.photos.map(p => p.id) } });
-        toast('Booked! 🎉'); go('#/b/' + b.id);
+        location.href = b.pay_url;
       } catch (err) { toast(err.message); $('#submit').disabled = false; if (st.pro) renderWhen(); }
     };
   },
@@ -258,10 +258,11 @@ const views = {
     if (isPro && b.status === 'assigned' && b.pro_id === me.id) A.push(['decline', 'Decline', 'ghost']);
     if (mine && b.status === 'accepted') A.push(['start', "I've arrived, start the job"], ['release', "I can't make it", 'ghost']);
     if (mine && b.status === 'in_progress') A.push(['finish', '✓ Mark job as done']);
+    if (isCust && b.status === 'unpaid') A.push(['pay', `Pay ${som(b.price)}`]);
     if (isCust && b.status === 'awaiting_confirmation') A.push(['confirm', 'Confirm & pay']);
     if (isAdmin && b.status === 'disputed') A.push(['confirm', 'Resolve: pay the pro'], ['refund', 'Resolve: refund the client', 'danger']);
     if (isCust && (b.status === 'awaiting_confirmation' || (b.status === 'completed' && b.warranty_until >= today))) A.push(['dispute', b.status === 'completed' ? '🛡️ Warranty claim' : 'Report a problem', 'ghost']);
-    if ((isCust || isAdmin) && ['open', 'assigned', 'accepted'].includes(b.status)) A.push(['cancel', 'Cancel booking', 'ghost']);
+    if ((isCust || isAdmin) && ['unpaid', 'open', 'assigned', 'accepted'].includes(b.status)) A.push(['cancel', 'Cancel booking', 'ghost']);
     if (isCust && b.recurrence !== 'none' && UPCOMING.includes(b.status)) A.push(['stop-recurring', 'Stop repeating', 'ghost']);
     const showChat = b.pro_id && (isCust || mine || isAdmin);
     app.innerHTML = `<a href="#/bookings">‹ Bookings</a>
@@ -273,7 +274,7 @@ const views = {
         ${b.service_id ? `<div class="list-item"><span class="muted">Amount</span><span>${b.qty} · ${esc(b.unit)}</span></div>` : ''}
         ${isPro || isAdmin ? `<div class="list-item"><span class="muted">Client</span><span>${esc(b.customer_name)}</span></div>` : ''}
         <div class="list-item"><span class="muted">${isPro ? 'Your payout' : 'Price'}</span><b>${som(isPro ? b.payout : b.price)}${!isPro && b.tip ? ` + ${som(b.tip)} tip` : ''}</b></div>
-        <div class="list-item"><span class="muted">Payment</span><span>${{ held: '🔒 Held securely', released: '✅ Paid to pro', refunded: '↩️ Refunded', partial_refund: `↩️ Refunded minus ${som(b.cancel_fee)} late fee` }[b.payment]}</span></div>
+        <div class="list-item"><span class="muted">Payment</span><span>${{ pending: '⏳ Not paid yet', none: '—', refund_pending: '↩️ Refund in progress', held: '🔒 Held securely', released: '✅ Paid to pro', refunded: '↩️ Refunded', partial_refund: `↩️ Refunded minus ${som(b.cancel_fee)} late fee` }[b.payment]}</span></div>
         ${b.warranty_until ? `<div class="list-item"><span class="muted">Warranty</span><span>🛡️ until ${dateOnly(b.warranty_until)}</span></div>` : ''}
         ${b.notes ? `<p class="muted">“${esc(b.notes)}”</p>` : ''}
         ${b.photos.length ? `<div class="gallery" style="margin-top:8px">${b.photos.map(x => `<a class="ph" href="${x.url}" target="_blank" style="background-image:url('${x.url}')"></a>`).join('')}</div>` : ''}
@@ -292,6 +293,7 @@ const views = {
     let tip = 0, rating = 5;
     app.querySelectorAll('[data-a]').forEach(btn => btn.onclick = async () => {
       const a = btn.dataset.a; let payload = {};
+      if (a === 'pay') { const r = await api(`/bookings/${id}/pay`, { method: 'POST' }).catch(e => toast(e.message)); if (r) location.href = r.pay_url; return; }
       if (a === 'confirm' && isCust) { $('#tipbox').hidden = false; $('#acts').hidden = true; return; }
       if (a === 'dispute') { const reason = prompt('What went wrong? Our team will review it within 24 hours.'); if (!reason) return; payload = { reason }; }
       if (a === 'cancel') { const late = b.status === 'accepted' && Date.parse(b.scheduled_at) - Date.now() < 24 * 3600e3; if (!confirm(late ? `It's less than 24 h before the visit, so a ${som(Math.round(b.price * 0.2))} late-cancellation fee goes to the pro. Cancel anyway?` : 'Cancel this booking? You will get a full refund.')) return; }
@@ -300,7 +302,7 @@ const views = {
       try { await api(`/bookings/${id}/${a}`, { method: 'POST', body: payload }); toast('Done'); a === 'release' || a === 'decline' ? go('#/jobs') : route(); } catch (e) { toast(e.message); btn.disabled = false; }
     });
     app.querySelectorAll('[data-tip]').forEach(c => c.onclick = () => { app.querySelectorAll('[data-tip]').forEach(x => x.classList.remove('on')); c.classList.add('on'); tip = +c.dataset.tip; $('#payNow').textContent = `Release ${som(b.price + tip)}`; });
-    $('#payNow')?.addEventListener('click', async () => { try { await api(`/bookings/${id}/confirm`, { method: 'POST', body: { tip } }); toast('Payment released. Thank you!'); route(); } catch (e) { toast(e.message); } });
+    $('#payNow')?.addEventListener('click', async () => { try { const r = await api(`/bookings/${id}/confirm`, { method: 'POST', body: { tip } }); if (r.tip_pay_url) return (location.href = r.tip_pay_url); toast('Payment released. Thank you!'); route(); } catch (e) { toast(e.message); } });
     app.querySelectorAll('#rt [data-r]').forEach(c => c.onclick = () => { app.querySelectorAll('#rt .chip').forEach(x => x.classList.remove('on')); c.classList.add('on'); rating = +c.dataset.r; });
     $('#rv')?.addEventListener('click', async () => { try { await api(`/bookings/${id}/review`, { method: 'POST', body: { rating, body: $('#rb').value } }); toast('Thanks for the review!'); route(); } catch (e) { toast(e.message); } });
     if (showChat) {
@@ -383,7 +385,7 @@ const views = {
       ${r.status === 'open' ? '<div class="actions"><button class="ghost" id="close">Close request</button></div>' : ''}`;
     app.querySelectorAll('[data-hire]').forEach(b => b.onclick = async () => {
       if (!confirm('Hire this pro? We hold the payment and release it only after you confirm the job is done.')) return;
-      try { const bk = await api(`/requests/${id}/hire`, { method: 'POST', body: { quote_id: +b.dataset.hire } }); toast('Hired! 🎉'); go('#/b/' + bk.id); } catch (e) { toast(e.message); }
+      try { const bk = await api(`/requests/${id}/hire`, { method: 'POST', body: { quote_id: +b.dataset.hire } }); location.href = bk.pay_url; } catch (e) { toast(e.message); }
     });
     $('#close')?.addEventListener('click', async () => { if (confirm('Close this request? Pros will no longer be able to quote.')) { await api(`/requests/${id}/close`, { method: 'POST' }); route(); } });
   },
